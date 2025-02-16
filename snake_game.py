@@ -14,9 +14,15 @@ GAME_SPEED = 15
 
 # Colors
 BLACK = (0, 0, 0)
-DARK_GREEN = (0, 100, 0)
 GREEN = (0, 255, 0)
-LIGHT_GREEN = (144, 238, 144)
+DARK_GREEN = (34, 89, 34)
+SNAKE_DARK = (26, 71, 26)
+SNAKE_LIGHT = (46, 99, 46)
+SNAKE_PATTERN = (38, 85, 38)
+EYE_COLOR = (255, 234, 0)  # Yellow snake eyes
+PUPIL_COLOR = (0, 0, 0)    # Black pupils
+TONGUE_COLOR = (255, 92, 92)  # Red tongue
+SOIL_BROWN = (139, 69, 19)
 RED = (255, 0, 0)
 DARK_RED = (139, 0, 0)
 WHITE = (255, 255, 255)
@@ -31,6 +37,9 @@ clock = pygame.time.Clock()
 # Initialize fonts
 title_font = pygame.font.Font(None, 74)
 font = pygame.font.Font(None, 36)
+title_font = pygame.font.Font(None, 100)  # Bigger font for title
+subtitle_font = pygame.font.Font(None, 36)
+game_font = pygame.font.Font(None, 36)
 small_font = pygame.font.Font(None, 24)
 
 class Snake:
@@ -119,27 +128,67 @@ class EnemySnake:
         self.body.pop()
         return True
 
-def draw_snake_segment(screen, pos, is_head=False):
-    x, y = pos[0] * GRID_SIZE, pos[1] * GRID_SIZE
+def draw_snake_segment(screen, pos, snake_obj=None, is_head=False, segment_index=0):
+    x = pos[0] * GRID_SIZE
+    y = pos[1] * GRID_SIZE
     segment_size = GRID_SIZE - 2
-
-    # Draw main body segment with gradient
-    pygame.draw.rect(screen, DARK_GREEN, 
-                    (x, y, segment_size, segment_size))
-    pygame.draw.rect(screen, GREEN,
-                    (x + 2, y + 2, segment_size - 4, segment_size - 4))
     
-    if is_head:
-        # Draw eyes
-        eye_radius = 3
-        eye_color = WHITE
-        eye_pos1 = (x + GRID_SIZE//2 + snake.eyes_offset[0][0], 
-                    y + GRID_SIZE//2 + snake.eyes_offset[0][1])
-        eye_pos2 = (x + GRID_SIZE//2 + snake.eyes_offset[1][0],
-                    y + GRID_SIZE//2 + snake.eyes_offset[1][1])
+    # Create gradient effect for snake body
+    gradient_rect = pygame.Surface((segment_size, segment_size))
+    for i in range(segment_size):
+        progress = i / segment_size
+        color = [
+            int(SNAKE_DARK[j] + (SNAKE_LIGHT[j] - SNAKE_DARK[j]) * progress)
+            for j in range(3)
+        ]
+        pygame.draw.line(gradient_rect, color, (i, 0), (i, segment_size))
+    
+    # Add scale pattern every few segments
+    if segment_index % 2 == 0:
+        scale_height = segment_size // 3
+        pygame.draw.ellipse(gradient_rect, SNAKE_PATTERN,
+                          (segment_size//4, 0, segment_size//2, scale_height))
+    
+    # Apply the gradient surface
+    screen.blit(gradient_rect, (x + 1, y + 1))
+    
+    # Draw head details if this is the head
+    if is_head and snake_obj:
+        # Draw larger, more detailed eyes
+        eye_size = 6
+        pupil_size = 3
         
-        pygame.draw.circle(screen, eye_color, eye_pos1, eye_radius)
-        pygame.draw.circle(screen, eye_color, eye_pos2, eye_radius)
+        # Calculate eye positions based on direction
+        eye_pos1 = (x + GRID_SIZE//2 + snake_obj.eyes_offset[0][0],
+                   y + GRID_SIZE//2 + snake_obj.eyes_offset[0][1])
+        eye_pos2 = (x + GRID_SIZE//2 + snake_obj.eyes_offset[1][0],
+                   y + GRID_SIZE//2 + snake_obj.eyes_offset[1][1])
+        
+        # Draw eye whites
+        pygame.draw.circle(screen, EYE_COLOR, eye_pos1, eye_size)
+        pygame.draw.circle(screen, EYE_COLOR, eye_pos2, eye_size)
+        
+        # Draw pupils (slightly offset based on movement direction)
+        pupil_offset_x = snake_obj.direction[0] * 2
+        pupil_offset_y = snake_obj.direction[1] * 2
+        pygame.draw.circle(screen, PUPIL_COLOR,
+                         (eye_pos1[0] + pupil_offset_x, eye_pos1[1] + pupil_offset_y),
+                         pupil_size)
+        pygame.draw.circle(screen, PUPIL_COLOR,
+                         (eye_pos2[0] + pupil_offset_x, eye_pos2[1] + pupil_offset_y),
+                         pupil_size)
+        
+        # Draw flickering tongue
+        if pygame.time.get_ticks() % 1000 < 500:  # Tongue flicks every half second
+            tongue_start = (x + GRID_SIZE//2 + snake_obj.direction[0] * GRID_SIZE//2,
+                          y + GRID_SIZE//2 + snake_obj.direction[1] * GRID_SIZE//2)
+            tongue_end1 = (tongue_start[0] + snake_obj.direction[0] * 8 + snake_obj.direction[1] * 4,
+                          tongue_start[1] + snake_obj.direction[1] * 8 + snake_obj.direction[0] * 4)
+            tongue_end2 = (tongue_start[0] + snake_obj.direction[0] * 8 - snake_obj.direction[1] * 4,
+                          tongue_start[1] + snake_obj.direction[1] * 8 - snake_obj.direction[0] * 4)
+            
+            pygame.draw.line(screen, TONGUE_COLOR, tongue_start, tongue_end1, 2)
+            pygame.draw.line(screen, TONGUE_COLOR, tongue_start, tongue_end2, 2)
 
 def draw_enemy_snake(screen, pos):
     x, y = pos[0] * GRID_SIZE, pos[1] * GRID_SIZE
@@ -263,57 +312,221 @@ def draw_victory(screen, score):
     restart_rect = restart_text.get_rect(center=(WINDOW_SIZE//2, WINDOW_SIZE - 50))
     screen.blit(restart_text, restart_rect)
 
-def main():
-    global snake  # Make snake global so draw functions can access it
+def draw_tree(screen, x, y):
+    # Draw tree trunk
+    trunk_width = random.randint(30, 40)
+    trunk_height = random.randint(100, 150)
     
+    # Create a gradient effect for the trunk
+    for i in range(trunk_width):
+        progress = i / trunk_width
+        color = [
+            int(DARK_BROWN[0] + (LIGHT_BROWN[0] - DARK_BROWN[0]) * progress),
+            int(DARK_BROWN[1] + (LIGHT_BROWN[1] - DARK_BROWN[1]) * progress),
+            int(DARK_BROWN[2] + (LIGHT_BROWN[2] - DARK_BROWN[2]) * progress)
+        ]
+        pygame.draw.line(screen, color, 
+                        (x + i, y), 
+                        (x + i, y - trunk_height))
+    
+    # Draw tree foliage (multiple circular clusters)
+    foliage_radius = random.randint(50, 70)
+    center_x = x + trunk_width // 2
+    top_y = y - trunk_height
+    
+    # Draw multiple overlapping circles for fuller foliage
+    for _ in range(5):
+        offset_x = random.randint(-20, 20)
+        offset_y = random.randint(-20, 20)
+        pygame.draw.circle(screen, TREE_GREEN,
+                         (center_x + offset_x, top_y + offset_y),
+                         foliage_radius)
+
+def draw_background(screen):
+    # Fill with soil color
+    screen.fill(SOIL_BROWN)
+    
+    # Add more detailed soil texture with varying shades
+    for _ in range(2000):  # Increased number of details
+        x = random.randint(0, WINDOW_SIZE)
+        y = random.randint(0, WINDOW_SIZE)
+        size = random.randint(1, 4)  # Varying sizes for texture
+        color_offset = random.randint(-20, 20)
+        color = (
+            max(0, min(255, SOIL_BROWN[0] + color_offset)),
+            max(0, min(255, SOIL_BROWN[1] + color_offset)),
+            max(0, min(255, SOIL_BROWN[2] + color_offset))
+        )
+        pygame.draw.circle(screen, color, (x, y), 2)
+
+def draw_how_to_play(screen):
+    # Fill with black background
+    screen.fill(BLACK)
+    
+    # Draw title
+    title = title_font.render("How to Play", True, GREEN)
+    title_rect = title.get_rect(center=(WINDOW_SIZE//2, 80))
+    screen.blit(title, title_rect)
+    
+    # Instructions text
+    instructions = [
+        "Control your snake with arrow keys",
+        "Collect golden food to grow",
+        "Avoid hitting the walls",
+        "Don't collide with yourself",
+        "Watch out for the enemy snake!",
+        "Score 10 points to win",
+        "",
+        "Press ESC to return to title"
+    ]
+    
+    # Draw instructions
+    for i, text in enumerate(instructions):
+        instruction = game_font.render(text, True, WHITE)
+        rect = instruction.get_rect(center=(WINDOW_SIZE//2, 180 + i * 50))
+        screen.blit(instruction, rect)
+
+def draw_title_screen(screen, after_game=False):
+    # Fill background based on whether we're coming from a game
+    if after_game:
+        screen.fill(BLACK)
+    else:
+        screen.fill(SOIL_BROWN)
+        # Add soil texture only for initial title screen
+        for _ in range(1000):
+            x = random.randint(0, WINDOW_SIZE)
+            y = random.randint(0, WINDOW_SIZE)
+            color_offset = random.randint(-10, 10)
+            color = (
+                max(0, min(255, SOIL_BROWN[0] + color_offset)),
+                max(0, min(255, SOIL_BROWN[1] + color_offset)),
+                max(0, min(255, SOIL_BROWN[2] + color_offset))
+            )
+            pygame.draw.circle(screen, color, (x, y), 2)
+    
+    # Create animated snake title
+    current_time = pygame.time.get_ticks()
+    wave_offset = math.sin(current_time / 500) * 10
+    
+    # Draw "SNAKE" text with wave effect
+    title_text = "SNAKE"
+    for i, letter in enumerate(title_text):
+        letter_surf = title_font.render(letter, True, GREEN)
+        letter_rect = letter_surf.get_rect()
+        x = WINDOW_SIZE//2 - (len(title_text) * 50)//2 + i * 50
+        y = WINDOW_SIZE//3 + math.sin(current_time/500 + i/2) * 10
+        screen.blit(letter_surf, (x, y))
+    
+    # Draw subtitle with pulsing effect
+    pulse = (math.sin(current_time / 400) + 1) / 2
+    subtitle_color = (int(255 * pulse), 255, int(255 * pulse))
+    
+    # Draw "Press SPACE to Start" text
+    start_text = subtitle_font.render("Press SPACE to Start", True, subtitle_color)
+    start_rect = start_text.get_rect(center=(WINDOW_SIZE//2, WINDOW_SIZE * 2//3))
+    screen.blit(start_text, start_rect)
+    
+    # Draw "How to Play (H)" text
+    how_to_play_text = subtitle_font.render("How to Play (H)", True, WHITE)
+    how_to_play_rect = how_to_play_text.get_rect(center=(WINDOW_SIZE//2, WINDOW_SIZE * 2//3 + 50))
+    screen.blit(how_to_play_text, how_to_play_rect)
+    
+    # Draw decorative snake
+    snake_color = GREEN
+    snake_points = []
+    time_offset = current_time / 1000
+    for i in range(20):
+        x = WINDOW_SIZE//2 + math.cos(time_offset + i/3) * (100 - i*3)
+        y = WINDOW_SIZE * 3//4 + math.sin(time_offset + i/3) * (50 - i*2)
+        snake_points.append((int(x), int(y)))
+    if len(snake_points) > 1:
+        pygame.draw.lines(screen, snake_color, False, snake_points, 5)
+    
+    # Draw snake eyes
+    head_x, head_y = snake_points[0]
+    pygame.draw.circle(screen, WHITE, (head_x - 8, head_y - 8), 4)
+    pygame.draw.circle(screen, WHITE, (head_x - 8, head_y + 8), 4)
+
+def main():
     snake = Snake()
-    enemy = EnemySnake()
-    food = [random.randint(0, GRID_COUNT-1), random.randint(0, GRID_COUNT-1)]
+    enemy_snake = EnemySnake()
+    food_pos = (random.randint(0, GRID_COUNT-1), random.randint(0, GRID_COUNT-1))
     score = 0
     game_over = False
     victory = False
+    in_title_screen = True
+    in_how_to_play = False
+    after_game = False
     
+    # Create static background surface
+    background = pygame.Surface((WINDOW_SIZE, WINDOW_SIZE))
+    draw_background(background)
+
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            
             if event.type == pygame.KEYDOWN:
-                if game_over or victory:
+                if in_how_to_play:
+                    if event.key == pygame.K_ESCAPE:
+                        in_how_to_play = False
+                        in_title_screen = True
+                elif in_title_screen:
                     if event.key == pygame.K_SPACE:
+                        in_title_screen = False
+                        after_game = False
                         snake.reset()
-                        enemy.reset()
-                        food = [random.randint(0, GRID_COUNT-1), 
-                               random.randint(0, GRID_COUNT-1)]
+                        enemy_snake.reset()
+                        food_pos = (random.randint(0, GRID_COUNT-1), 
+                                  random.randint(0, GRID_COUNT-1))
                         score = 0
                         game_over = False
                         victory = False
+                    elif event.key == pygame.K_h:
+                        in_title_screen = False
+                        in_how_to_play = True
+                elif game_over or victory:
+                    if event.key == pygame.K_SPACE:
+                        in_title_screen = True
+                        after_game = True
+                        game_over = False
+                        victory = False
                 else:
-                    if event.key == pygame.K_UP:
+                    if event.key == pygame.K_UP and snake.direction != [0, 1]:
                         snake.change_direction([0, -1])
-                    elif event.key == pygame.K_DOWN:
+                    elif event.key == pygame.K_DOWN and snake.direction != [0, -1]:
                         snake.change_direction([0, 1])
-                    elif event.key == pygame.K_LEFT:
+                    elif event.key == pygame.K_LEFT and snake.direction != [1, 0]:
                         snake.change_direction([-1, 0])
-                    elif event.key == pygame.K_RIGHT:
+                    elif event.key == pygame.K_RIGHT and snake.direction != [-1, 0]:
                         snake.change_direction([1, 0])
         
-        if not game_over and not victory:
+        # Clear the screen at the start of each frame
+        screen.fill(BLACK)
+        
+        if in_how_to_play:
+            draw_how_to_play(screen)
+        elif in_title_screen:
+            draw_title_screen(screen, after_game)
+        elif not game_over and not victory:
+            # Draw the game screen
+            screen.blit(background, (0, 0))
+            
             # Move snake and check for collisions
             if not snake.move():
                 game_over = True
             
             # Move enemy snake
-            if not enemy.move(snake.body[0]):
+            if not enemy_snake.move(snake.body[0]):
                 game_over = True
             
             # Check if enemy caught the player
-            if snake.body[0] in enemy.body:
+            if snake.body[0] in enemy_snake.body:
                 game_over = True
             
             # Check for food collision
-            if snake.body[0] == tuple(food):
+            if snake.body[0] == food_pos:
                 snake.grow = True
                 score += 1
                 
@@ -321,37 +534,31 @@ def main():
                 if score >= 10:
                     victory = True
                 else:
-                    food = [random.randint(0, GRID_COUNT-1), 
-                           random.randint(0, GRID_COUNT-1)]
-                    # Make sure food doesn't spawn on snake or enemy
-                    while (tuple(food) in snake.body or 
-                           tuple(food) in enemy.body):
-                        food = [random.randint(0, GRID_COUNT-1), 
-                               random.randint(0, GRID_COUNT-1)]
-        
-        # Draw everything
-        screen.fill(BLACK)
-        
-        if victory:
-            draw_victory(screen, score)
-        else:
-            # Draw snake
-            for i, segment in enumerate(snake.body):
-                draw_snake_segment(screen, segment, i == 0)
+                    food_pos = (random.randint(0, GRID_COUNT-1), 
+                              random.randint(0, GRID_COUNT-1))
+                    while (food_pos in snake.body or 
+                          food_pos in enemy_snake.body):
+                        food_pos = (random.randint(0, GRID_COUNT-1), 
+                                  random.randint(0, GRID_COUNT-1))
             
-            # Draw enemy snake
-            for segment in enemy.body:
+            # Draw everything
+            for i, segment in enumerate(snake.body):
+                draw_snake_segment(screen, segment, snake, i == 0, i)
+            
+            for segment in enemy_snake.body:
                 draw_enemy_snake(screen, segment)
             
             # Draw food
             pygame.draw.rect(screen, GOLD, 
-                            (food[0] * GRID_SIZE, food[1] * GRID_SIZE,
-                             GRID_SIZE - 2, GRID_SIZE - 2))
+                           (food_pos[0] * GRID_SIZE, food_pos[1] * GRID_SIZE,
+                            GRID_SIZE - 2, GRID_SIZE - 2))
             
-            if game_over:
-                draw_game_over(screen, score)
-            else:
-                draw_score(screen, score)
+            draw_score(screen, score)
+        
+        if game_over:
+            draw_game_over(screen, score)
+        elif victory:
+            draw_victory(screen, score)
         
         pygame.display.flip()
         clock.tick(GAME_SPEED)
